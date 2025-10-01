@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find Your Photos</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 40px; text-align: center; }
+        h1 { color: #333; }
+        .container { max-width: 600px; margin: auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 10px 0; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; cursor: pointer; }
+        button:disabled { background-color: #ccc; }
+        #results { margin-top: 20px; }
+        .photo { margin: 10px; max-width: 200px; }
+        #status { color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Find Your Photos</h1>
+        <p>Upload a selfie to find your photos from the event.</p>
+        <input type="file" id="selfieInput" accept="image/*">
+        <button id="uploadBtn" onclick="processSelfie()">Upload & Find Photos</button>
+        <div id="results"></div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        async function processSelfie() {
+            const selfieInput = document.getElementById('selfieInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const status = document.getElementById('status');
+            const results = document.getElementById('results');
+            
+            if (!selfieInput.files[0]) {
+                status.innerText = 'Please select a selfie to upload.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('event_id', '{{event_id}}');
+            formData.append('selfie', selfieInput.files[0]);
+
+            try {
+                uploadBtn.disabled = true;
+                status.innerText = 'Uploading selfie and finding matches...';
+                console.log('Sending POST to /process_selfie with event_id: {{event_id}}');
+                const response = await fetch('/process_selfie', {
+                    method: 'POST',
+                    body: formData
+                });
+                console.log('Process selfie response status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Process selfie error response:', errorText);
+                    throw new Error(`Server error: ${response.status} - ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log('Process selfie response data:', data);
+                uploadBtn.disabled = false;
+
+                if (data.matches && data.matches.length > 0) {
+                    status.innerText = `Found ${data.matches.length} matching photos!`;
+                    results.innerHTML = '';
+                    data.matches.forEach(match => {
+                        const img = document.createElement('img');
+                        img.src = `/image/${match.file_id}`;
+                        img.alt = match.file_name;
+                        img.className = 'photo';
+                        img.title = `Similarity: ${(match.distance * 100).toFixed(2)}%`;
+                        results.appendChild(img);
+                    });
+                } else {
+                    status.innerText = 'No matching photos found.';
+                }
+            } catch (error) {
+                console.error('Process selfie error:', error);
+                status.innerText = `Error: ${error.message}`;
+                uploadBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
+<!--
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Photo Matcher - Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 40px; text-align: center; }
+        h1 { color: #333; }
+        .container { max-width: 600px; margin: auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 10px 0; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; cursor: pointer; }
+        #results { margin-top: 20px; }
+        img { max-width: 100%; height: auto; margin: 10px 0; }
+        #status { color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Find Your Photos</h1>
+        <p>Upload a selfie to find your photos from the event.</p>
+        <input type="file" id="selfieInput" accept="image/*">
+        <button onclick="uploadSelfie()">Upload & Find Photos</button>
+        <div id="results"></div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        async function uploadSelfie() {
+            const selfieInput = document.getElementById('selfieInput');
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+            if (!selfieInput.files[0]) {
+                statusDiv.innerText = 'Please select a selfie to upload.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('event_id', '{{event_id}}');
+            formData.append('selfie', selfieInput.files[0]);
+
+            try {
+                statusDiv.innerText = 'Processing selfie...';
+                const response = await fetch('/process_selfie', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Error processing selfie');
+                }
+
+                resultsDiv.innerHTML = '';
+                if (data.matches.length === 0) {
+                    statusDiv.innerText = 'No matching photos found.';
+                    return;
+                }
+
+                data.matches.forEach(match => {
+                    const img = document.createElement('img');
+                    img.src = `/image/${match.file_id}`;
+                    img.alt = match.file_name;
+                    const p = document.createElement('p');
+                    p.innerText = `${match.file_name} (Similarity: ${match.distance.toFixed(4)})`;
+                    resultsDiv.appendChild(p);
+                    resultsDiv.appendChild(img);
+                });
+                statusDiv.innerText = `Found ${data.matches.length} matching photo(s).`;
+            } catch (error) {
+                console.error('Upload selfie error:', error);
+                statusDiv.innerText = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Photo Matcher - Client</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 40px; text-align: center; }
+        h1 { color: #333; }
+        .container { max-width: 600px; margin: auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { padding: 10px; margin: 10px 0; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; cursor: pointer; }
+        #results { margin-top: 20px; }
+        img { max-width: 100%; height: auto; margin: 10px 0; }
+        #status { color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Find Your Photos</h1>
+        <p>Upload a selfie to find your photos from the event.</p>
+        <input type="file" id="selfieInput" accept="image/*">
+        <button onclick="uploadSelfie()">Upload & Find Photos</button>
+        <div id="results"></div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        async function uploadSelfie() {
+            const selfieInput = document.getElementById('selfieInput');
+            const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
+            if (!selfieInput.files[0]) {
+                statusDiv.innerText = 'Please select a selfie to upload.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('event_id', '{{event_id}}');
+            formData.append('selfie', selfieInput.files[0]);
+
+            try {
+                statusDiv.innerText = 'Processing selfie...';
+                const response = await fetch('/process_selfie', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Error processing selfie');
+                }
+
+                resultsDiv.innerHTML = '';
+                if (data.matches.length === 0) {
+                    statusDiv.innerText = 'No matching photos found.';
+                    return;
+                }
+
+                data.matches.forEach(match => {
+                    const img = document.createElement('img');
+                    img.src = `/image/${match.file_id}`;
+                    img.alt = match.file_name;
+                    const p = document.createElement('p');
+                    p.innerText = `${match.file_name} (Similarity: ${match.distance.toFixed(4)})`;
+                    resultsDiv.appendChild(p);
+                    resultsDiv.appendChild(img);
+                });
+                statusDiv.innerText = `Found ${data.matches.length} matching photo(s).`;
+            } catch (error) {
+                console.error('Upload selfie error:', error);
+                statusDiv.innerText = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
+
+-->

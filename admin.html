@@ -67,12 +67,16 @@
                     document.getElementById('status').innerText = `Event already created. Event ID: ${eventId}`;
                 }
 
+            } else if(response.status === 401){
+                document.getElementById('status').innerText = 'Please connect Google Drive to continue.';
+            
+
             } else {
                 const errorData = await response.json();
-                document.getElementById('status').innerText = `Authentication failed: ${errorData.detail || 'Please connect Google Drive.'}`;
+                document.getElementById('status').innerText = `Error: ${errorData.detail}`;
             }
         } catch (error) {
-            document.getElementById('status').innerText = `Authentication error: ${error.message}. Please connect Google Drive.`;
+            document.getElementById('status').innerText = `Authentication error: ${error.message}`;
         }
     }
 

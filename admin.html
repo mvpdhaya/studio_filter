@@ -13,6 +13,11 @@
         button:disabled { background-color: #ccc; }
         #qr-code { margin-top: 20px; }
         #status { color: #666; margin-top: 10px; }
+        #eventsList { margin-top: 20px; text-align: left; }
+        #eventsList ul { list-style: none; padding: 0; }
+        #eventsList li { margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        #eventsList button { width: auto; margin: 0 5px; }
+        #eventsList .delete-btn { background-color: #f44336; }
     </style>
 </head>
 <body>
@@ -26,8 +31,10 @@
         <button id="createEventBtn">Create Event & Build Index</button>
         <button id="qrBtn" onclick="generateQR()" disabled>Generate QR Code</button>
         <button onclick="resetEvent()">Create New Event</button>
+        <button onclick="showAllEvents()">All Events</button>
         <div id="qr-code"></div>
         <div id="status"></div>
+        <div id="eventsList"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
@@ -61,10 +68,15 @@
                 // 🔹 Restore eventId if it exists in localStorage
                 const storedEventId = localStorage.getItem('eventId');
                 if (storedEventId) {
-                    eventId = storedEventId;
-                    document.getElementById('createEventBtn').disabled = true;
-                    document.getElementById('qrBtn').disabled = false;
-                    document.getElementById('status').innerText = `Event already created. Event ID: ${eventId}`;
+                    if (await validateEventId(storedEventId)) {
+                        eventId = storedEventId;
+                        document.getElementById('createEventBtn').disabled = true;
+                        document.getElementById('qrBtn').disabled = false;
+                        document.getElementById('status').innerText = `Event already created. Event ID: ${eventId}`;
+                    } else {
+                        localStorage.removeItem('eventId');
+                        document.getElementById('status').innerText = 'No valid event found. Ready to create a new event.';
+                    }
                 }
 
             } else if(response.status === 401){
@@ -77,6 +89,19 @@
             }
         } catch (error) {
             document.getElementById('status').innerText = `Authentication error: ${error.message}`;
+        }
+    }
+
+    async function validateEventId(storedEventId) {
+        try {
+            const response = await fetch(`/validate_event?event_id=${encodeURIComponent(storedEventId)}`);
+            if (response.ok) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (error) {
+            return false;
         }
     }
 
@@ -149,13 +174,70 @@
     }
 
     // 🔹 New function: Reset event (create new one)
-    function resetEvent() {
+    async function resetEvent() {
         localStorage.removeItem('eventId');
         eventId = null;
         document.getElementById('createEventBtn').disabled = false;
         document.getElementById('qrBtn').disabled = true;
         document.getElementById('qr-code').innerHTML = '';
         document.getElementById('status').innerText = 'Ready to create a new event.';
+        document.getElementById('eventsList').innerHTML = ''; // Clear events list if open
+    }
+
+    async function showAllEvents() {
+        try {
+            document.getElementById('status').innerText = 'Loading events...';
+            const response = await fetch('/list_events');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to load events');
+            }
+            const data = await response.json();
+            const eventsListDiv = document.getElementById('eventsList');
+            let html = '<h2>All Events</h2><ul>';
+            data.events.forEach(event => {
+                html += `
+                    <li>
+                        Event ID: ${event.event_id} (Folder ID: ${event.folder_id})
+                        <button onclick="selectEvent('${event.event_id}')">Select</button>
+                        <button class="delete-btn" onclick="deleteEvent('${event.event_id}')">Delete</button>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+            eventsListDiv.innerHTML = html;
+            document.getElementById('status').innerText = '';
+        } catch (error) {
+            document.getElementById('status').innerText = `Error loading events: ${error.message}`;
+        }
+    }
+
+    function selectEvent(selectedEventId) {
+        localStorage.setItem('eventId', selectedEventId);
+        eventId = selectedEventId;
+        document.getElementById('createEventBtn').disabled = true;
+        document.getElementById('qrBtn').disabled = false;
+        document.getElementById('status').innerText = `Event selected. Event ID: ${eventId}`;
+        document.getElementById('eventsList').innerHTML = ''; // Hide the list after selection
+    }
+
+    async function deleteEvent(deletedEventId) {
+        if (confirm(`Are you sure you want to delete event ${deletedEventId}?`)) {
+            try {
+                const response = await fetch('/delete_event', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `event_id=${encodeURIComponent(deletedEventId)}`
+                });
+                if (!response.ok) throw new Error('Failed to delete event');
+                if (eventId === deletedEventId) {
+                    resetEvent();
+                }
+                showAllEvents(); // Refresh the list
+            } catch (error) {
+                document.getElementById('status').innerText = `Error deleting event: ${error.message}`;
+            }
+        }
     }
 
     window.onload = checkAuth;
@@ -163,147 +245,3 @@
 
 </body>
 </html>
-
-<!--
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SaaS Photo Matcher - Admin</title>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 40px; text-align: center; }
-        h1 { color: #333; }
-        .container { max-width: 600px; margin: auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        input, button, select { padding: 10px; margin: 10px 0; width: 80%; border: 1px solid #ddd; border-radius: 4px; }
-        button { background-color: #4CAF50; color: white; cursor: pointer; }
-        button:disabled { background-color: #ccc; }
-        #qr-code { margin-top: 20px; }
-        #status { color: #666; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Admin Panel</h1>
-        <p>Create a new event (e.g., wedding) and select a Drive folder.</p>
-        <button id="connectDriveBtn" onclick="connectDrive()">Connect Google Drive</button>
-        <select id="folderSelect" disabled>
-            <option value="">Select a Drive folder</option>
-        </select>
-        <button onclick="createEvent()">Create Event & Build Index</button>
-        <button onclick="generateQR()" id="qrBtn" disabled>Generate QR Code</button>
-        <div id="qr-code"></div>
-        <div id="status"></div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
-    <script>
-        let eventId = null;
-        let isAuthenticated = false;
-
-        async function checkAuth() {
-            try {
-                document.getElementById('status').innerText = 'Checking authentication...';
-                const response = await fetch('/list_folders');
-                if (response.ok) {
-                    isAuthenticated = true;
-                    document.getElementById('connectDriveBtn').disabled = true;
-                    document.getElementById('connectDriveBtn').innerText = 'Google Drive Connected';
-                    document.getElementById('status').innerText = 'Authenticated with Google Drive.';
-                    const data = await response.json();
-                    const folderSelect = document.getElementById('folderSelect');
-                    folderSelect.disabled = false;
-                    folderSelect.innerHTML = '<option value="">Select a Drive folder</option>';
-                    data.folders.forEach(folder => {
-                        const option = document.createElement('option');
-                        option.value = folder.id;
-                        option.text = folder.name;
-                        folderSelect.appendChild(option);
-                    });
-                    if (data.folders.length === 0) {
-                        document.getElementById('status').innerText = 'Authenticated, but no folders found in Google Drive. Please create a folder.';
-                    }
-                } else {
-                    const errorData = await response.json();
-                    console.error('Check auth failed:', errorData);
-                    document.getElementById('status').innerText = `Authentication failed: ${errorData.detail || 'Please connect Google Drive.'}`;
-                }
-            } catch (error) {
-                console.error('Check auth error:', error);
-                document.getElementById('status').innerText = `Authentication error: ${error.message}. Please connect Google Drive.`;
-            }
-        }
-
-        async function connectDrive() {
-            try {
-                document.getElementById('status').innerText = 'Connecting to Google Drive...';
-                const response = await fetch('/auth');
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Failed to connect to Google Drive');
-                }
-                const data = await response.json();
-                if (data.auth_url) {
-                    window.location.href = data.auth_url;
-                } else {
-                    throw new Error('No authorization URL returned');
-                }
-            } catch (error) {
-                console.error('Connect Drive error:', error);
-                document.getElementById('status').innerText = `Error connecting to Drive: ${error.message}`;
-            }
-        }
-
-        async function createEvent() {
-            const folderId = document.getElementById('folderSelect').value;
-            if (!folderId) {
-                alert('Please select a Drive folder.');
-                return;
-            }
-            try {
-                document.getElementById('status').innerText = 'Creating event...';
-                const response = await fetch('/create_event', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `folder_id=${encodeURIComponent(folderId)}`
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Error creating event');
-                }
-                if (data.event_id) {
-                    eventId = data.event_id;
-                    document.getElementById('status').innerText = `Event created! ${data.message}`;
-                    document.getElementById('qrBtn').disabled = false;
-                }
-            } catch (error) {
-                console.error('Create event error:', error);
-                document.getElementById('status').innerText = `Error creating event: ${error.message}`;
-            }
-        }
-
-        function generateQR() {
-            if (!eventId) {
-                document.getElementById('status').innerText = 'No event created yet.';
-                return;
-            }
-            const clientUrl = `${window.location.origin}/client/${eventId}`;
-            const qrDiv = document.getElementById('qr-code');
-            qrDiv.innerHTML = '';
-            QRCode.toCanvas(document.createElement('canvas'), clientUrl, { scale: 4 }, (error, canvas) => {
-                if (error) {
-                    console.error('QR code error:', error);
-                    document.getElementById('status').innerText = 'Error generating QR code.';
-                    return;
-                }
-                qrDiv.appendChild(canvas);
-                document.getElementById('status').innerText = 'QR generated. Share with clients to scan and upload selfies.';
-            });
-        }
-
-        window.onload = checkAuth;
-    </script>
-</body>
-</html>
-
--->

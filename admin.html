@@ -65,7 +65,7 @@
                     folderSelect.appendChild(option);
                 });
 
-                // 🔹 Restore eventId if it exists in localStorage
+                // Restore eventId if it exists in localStorage
                 const storedEventId = localStorage.getItem('eventId');
                 if (storedEventId) {
                     if (await validateEventId(storedEventId)) {
@@ -79,10 +79,8 @@
                     }
                 }
 
-            } else if(response.status === 401){
+            } else if (response.status === 401) {
                 document.getElementById('status').innerText = 'Please connect Google Drive to continue.';
-            
-
             } else {
                 const errorData = await response.json();
                 document.getElementById('status').innerText = `Error: ${errorData.detail}`;
@@ -144,7 +142,7 @@
 
             if (data.event_id) {
                 eventId = data.event_id;
-                localStorage.setItem('eventId', eventId); // 🔹 Save to localStorage
+                localStorage.setItem('eventId', eventId);
                 document.getElementById('status').innerText = `Event created! ${data.message} Event ID: ${eventId}`;
                 document.getElementById('qrBtn').disabled = false;
                 document.getElementById('createEventBtn').disabled = true;
@@ -173,7 +171,7 @@
         });
     }
 
-    // 🔹 New function: Reset event (create new one)
+    // Modified: Reset event without deleting from backend
     async function resetEvent() {
         localStorage.removeItem('eventId');
         eventId = null;
@@ -231,7 +229,12 @@
                 });
                 if (!response.ok) throw new Error('Failed to delete event');
                 if (eventId === deletedEventId) {
-                    resetEvent();
+                    localStorage.removeItem('eventId');
+                    eventId = null;
+                    document.getElementById('createEventBtn').disabled = false;
+                    document.getElementById('qrBtn').disabled = true;
+                    document.getElementById('qr-code').innerHTML = '';
+                    document.getElementById('status').innerText = 'Event deleted. Ready to create a new event.';
                 }
                 showAllEvents(); // Refresh the list
             } catch (error) {
@@ -242,6 +245,5 @@
 
     window.onload = checkAuth;
 </script>
-
 </body>
 </html>

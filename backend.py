@@ -20,7 +20,7 @@ import secrets
 import json
 from typing import Dict
 
-load_dotenv() 
+load_dotenv()
 
 app = FastAPI()
 
@@ -63,23 +63,36 @@ def build_faiss_index(folder_id: str, credentials_dict: str):
         logging.error(f"Failed to initialize Drive service: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to initialize Drive service: {str(e)}")
 
-    query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png')"
-    try:
-        logging.info(f"Listing files in folder_id: {folder_id}")
-        results = drive_service.files().list(q=query, fields="files(id, name, mimeType)").execute()
-        files = results.get('files', [])
-        if not files:
-            logging.warning(f"No images found in folder_id: {folder_id}")
-            raise HTTPException(status_code=400, detail="No JPEG/PNG images found in the selected folder.")
-        logging.info(f"Files found in Drive folder: {[(f['name'], f['mimeType']) for f in files]}")
-    except Exception as e:
-        logging.error(f"Error listing Drive files: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list Drive files: {str(e)}")
+    # Modified: Use broader query and handle pagination
+    query = f"'{folder_id}' in parents"
+    files = []
+    page_token = None
+    while True:
+        try:
+            logging.info(f"Listing files in folder_id: {folder_id}, page_token: {page_token}")
+            response = drive_service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page_token
+            ).execute()
+            files.extend(response.get('files', []))
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+        except Exception as e:
+            logging.error(f"Error listing Drive files: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to list Drive files: {str(e)}")
+    
+    logging.info(f"Files found in Drive folder: {[(f['name'], f['mimeType']) for f in files]}")
 
     all_embeddings = []
     embedding_to_image = []
 
     for file in files:
+        # Filter for JPEG and PNG during processing (same as old code)
+        if file['mimeType'] not in ['image/jpeg', 'image/png']:
+            logging.info(f"Skipping {file['name']} (unsupported MIME type: {file['mimeType']})")
+            continue
         try:
             logging.info(f"Downloading file: {file['name']} (ID: {file['id']})")
             request = drive_service.files().get_media(fileId=file['id'])
@@ -372,13 +385,13 @@ async def process_selfie(event_id: str = Form(...), selfie: UploadFile = Form(..
     for dist, idx in zip(distances[0], indices[0]):
         if idx == -1:
             continue
-        if dist >= (1-COSINE_THRESHOLD): #COSINE_THRESHOLD
+        if dist >= (1-COSINE_THRESHOLD):
             file_id, file_name = embedding_to_image[idx]
             if file_name not in matched_photos or matched_photos[file_name][1] < dist:
-                matched_photos[file_name] = (file_id, float(dist))  # Convert numpy.float32 to float
+                matched_photos[file_name] = (file_id, float(dist))
 
     matched_photos_list = [
-        {'file_id': fid, 'file_name': fname, 'distance': float(dist)}  # Convert distance to float
+        {'file_id': fid, 'file_name': fname, 'distance': float(dist)}
         for fname, (fid, dist) in matched_photos.items()
     ]
     matched_photos_list = sorted(matched_photos_list, key=lambda x: x['distance'], reverse=True)
